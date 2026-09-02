@@ -4,6 +4,7 @@ from threading import Timer
 from flask import Flask, request, jsonify, send_from_directory
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
+from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
@@ -11,6 +12,8 @@ app = Flask(__name__, static_folder=".", static_url_path="")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "challans")
 os.makedirs(DATA_DIR, exist_ok=True)
 REC_FILE = os.path.join(DATA_DIR, "records.json")
+
+DELETE_PASSWORD = "090676"
 
 def load_r():
     if os.path.exists(REC_FILE):
@@ -23,15 +26,23 @@ def save_r(data):
     with open(REC_FILE, "w", encoding="utf-8") as f: json.dump(data, f, indent=2)
 
 def make_pdf(data, path):
-    doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
+    # 16 cm top margin reserved for pre-printed letterhead
+    doc = SimpleDocTemplate(
+        path, 
+        pagesize=A4, 
+        rightMargin=25, 
+        leftMargin=25, 
+        topMargin=16 * cm, 
+        bottomMargin=20
+    )
     s = getSampleStyleSheet()
     normal = s["Normal"]
     normal.fontSize = 8
     normal.leading = 10
     
     elems = [
-        Paragraph("<b>DELIVERY CHALLAN</b>", ParagraphStyle("T", parent=s["Heading1"], alignment=1, fontSize=14)),
-        Paragraph("<font size=8 color=gray>Issued under Rule 55 of CGST / SGST Rules</font>", ParagraphStyle("S", alignment=1, spaceAfter=10))
+        Paragraph("<b>DELIVERY CHALLAN</b>", ParagraphStyle("T", parent=s["Heading1"], alignment=1, fontSize=13)),
+        Paragraph("<font size=7 color=gray>Issued under Rule 55 of CGST / SGST Rules</font>", ParagraphStyle("S", alignment=1, spaceAfter=8))
     ]
     
     is_interstate = (data.get("sender_state", "").strip().lower() != data.get("receiver_state", "").strip().lower())
@@ -47,16 +58,16 @@ def make_pdf(data, path):
         ('BOX', (0,0), (-1,-1), 1, colors.black),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.grey),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('PADDING', (0,0), (-1,-1), 4)
+        ('PADDING', (0,0), (-1,-1), 3)
     ]))
-    elems.extend([t_h, Spacer(1, 10)])
+    elems.extend([t_h, Spacer(1, 8)])
     
     if is_interstate:
         headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (₹)", "Taxable (₹)", "IGST (₹)", "Total (₹)"]
-        col_w = [25, 120, 55, 35, 50, 60, 70, 65, 65]
+        col_w = [22, 120, 55, 30, 48, 60, 70, 65, 65]
     else:
         headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (₹)", "Taxable (₹)", "CGST (₹)", "SGST (₹)", "Total (₹)"]
-        col_w = [22, 110, 50, 30, 45, 55, 63, 55, 55, 60]
+        col_w = [20, 110, 50, 28, 44, 55, 63, 55, 55, 60]
 
     rows = [headers]
     tot_taxable = 0
@@ -106,14 +117,14 @@ def make_pdf(data, path):
         ('ALIGN', (1,1), (1,-1), 'LEFT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('FONTSIZE', (0,0), (-1,-1), 7.5),
         ('LINEABOVE', (0,-1), (-1,-1), 1, colors.black),
-        ('PADDING', (0,0), (-1,-1), 3)
+        ('PADDING', (0,0), (-1,-1), 2.5)
     ]))
-    elems.extend([t_i, Spacer(1, 20)])
+    elems.extend([t_i, Spacer(1, 12)])
     
-    elems.append(Paragraph("<font size=7>Terms: Goods dispatched on challan basis. This is not a tax invoice. Subject to Mumbai Jurisdiction.</font>", normal))
-    elems.append(Spacer(1, 35))
+    elems.append(Paragraph("<font size=6.5>Terms: Goods dispatched on challan basis. Not a tax invoice. Subject to Home Jurisdiction.</font>", normal))
+    elems.append(Spacer(1, 20))
     
     sig = [[
         Paragraph("Receiver's Signature & Stamp", normal),
@@ -132,14 +143,49 @@ def get_c(): return jsonify(load_r())
 def add_c():
     d = request.json
     r = load_r()
-    if not d.get("challan_no"): d["challan_no"] = f"DC-{datetime.now().strftime('%Y%m%d')}-{len(r)+1:03d}"
-    if not d.get("date"): d["date"] = datetime.now().strftime("%d-%m-%Y")
+    
+    # If editing an existing challan, replace it in the records list
+    existing_index = next((i for i, c in enumerate(r) if c.get("challan_no") == d.get("challan_no")), -1)
+    
+    if not d.get("challan_no"):
+        d["challan_no"] = f"DC-{datetime.now().strftime('%Y%m%d')}-{len(r)+1:03d}"
+    if not d.get("date"):
+        d["date"] = datetime.now().strftime("%d-%m-%Y")
+        
     fn = f"{d['challan_no'].replace('/','_')}.pdf"
     make_pdf(d, os.path.join(DATA_DIR, fn))
     d["pdf_path"] = f"/challans/{fn}"
-    r.append(d)
+    
+    if existing_index >= 0:
+        r[existing_index] = d
+    else:
+        r.append(d)
+        
     save_r(r)
     return jsonify({"status":"success", "data": d})
+
+@app.route("/api/challans/<path:challan_no>", methods=["DELETE"])
+def delete_c(challan_no):
+    req_pass = request.headers.get("X-Admin-Password", "")
+    if req_pass != DELETE_PASSWORD:
+        return jsonify({"status": "error", "message": "Incorrect password"}), 403
+
+    r = load_r()
+    item_to_remove = next((c for c in r if c.get("challan_no") == challan_no), None)
+    if not item_to_remove:
+        return jsonify({"status": "error", "message": "Record not found"}), 404
+        
+    r = [c for c in r if c.get("challan_no") != challan_no]
+    save_r(r)
+    
+    # Remove local PDF file
+    fn = f"{challan_no.replace('/','_')}.pdf"
+    file_path = os.path.join(DATA_DIR, fn)
+    if os.path.exists(file_path):
+        try: os.remove(file_path)
+        except: pass
+        
+    return jsonify({"status": "success"})
 
 @app.route("/challans/<path:f>")
 def dl(f): return send_from_directory(DATA_DIR, f)

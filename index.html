@@ -11,9 +11,24 @@ th,td{border:1px solid #e2e8f0;padding:6px;font-size:12px;text-align:center}
 th{background:#f1f5f9}
 .btn{background:#0284c7;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold}
 .btn-sec{background:#64748b}
+.btn-edit{background:#0284c7;padding:4px 8px;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px}
+.btn-del-record{background:#ef4444;padding:4px 8px;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;margin-left:5px}
 .btn-del{background:#ef4444;padding:3px 7px;color:#fff;border:none;border-radius:3px;cursor:pointer}
 .summary-box{float:right;width:300px;margin-top:10px;margin-bottom:20px;background:#f8fafc;padding:10px;border:1px solid #e2e8f0;border-radius:4px;}
 .summary-box div{display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px;}
+
+/* 16cm margin for browser printing onto pre-printed letterheads */
+@media print {
+  @page {
+    margin-top: 160mm;
+    margin-left: 10mm;
+    margin-right: 10mm;
+    margin-bottom: 10mm;
+  }
+  body { background: #fff; padding: 0; }
+  .box { box-shadow: none; padding: 0; }
+  .btn, .btn-sec, button, .summary-box, hr, h3, #ht, select { display: none !important; }
+}
 </style></head>
 <body><div class="box">
 <h2>GST Delivery Challan Generator</h2>
@@ -133,19 +148,20 @@ th{background:#f1f5f9}
   <div style="clear:both;"></div>
 
   <button type="submit" class="btn">Save & Generate PDF</button>
-  <button type="button" class="btn btn-sec" onclick="window.print()">Direct Print</button>
+  <button type="button" class="btn btn-sec" onclick="window.print()">Direct Print (16cm Letterhead)</button>
 </form>
 
 <hr style="margin:25px 0">
 <h3>Saved Challans</h3>
 <table id="ht">
-  <thead><tr><th>Challan No</th><th>Date</th><th>Receiver</th><th>Action</th></tr></thead>
+  <thead><tr><th>Challan No</th><th>Date</th><th>Receiver</th><th>Grand Total</th><th>Actions</th></tr></thead>
   <tbody></tbody>
 </table>
 </div>
 
 <script>
 document.getElementById('date').valueAsDate = new Date();
+let cachedRecords = [];
 
 const meta = {
   "Gold Jewellery": { hsn: "71131910", tax: 3, byWeight: true },
@@ -253,15 +269,80 @@ function addRow() {
 async function loadH() {
   try {
     const r = await fetch('/api/challans');
-    const d = await r.json();
-    document.querySelector('#ht tbody').innerHTML = d.map(x => `
+    cachedRecords = await r.json();
+    document.querySelector('#ht tbody').innerHTML = cachedRecords.map((x, idx) => {
+      const gTot = (x.items || []).reduce((acc, itm) => acc + (parseFloat(itm.total) || 0), 0);
+      return `
       <tr>
-        <td>${x.challan_no}</td>
+        <td><b>${x.challan_no}</b></td>
         <td>${x.date}</td>
         <td>${x.receiver_name}</td>
-        <td><a href="${x.pdf_path}" target="_blank">Download PDF</a></td>
-      </tr>`).join('');
+        <td>₹ ${gTot.toFixed(2)}</td>
+        <td>
+          <a href="${x.pdf_path}" target="_blank" style="margin-right:8px;">PDF</a>
+          <button type="button" class="btn-edit" onclick="editChallan('${x.challan_no}')">Edit</button>
+          <button type="button" class="btn-del-record" onclick="deleteChallan('${x.challan_no}')">Delete</button>
+        </td>
+      </tr>`;
+    }).join('');
   } catch(e) {}
+}
+
+function editChallan(challanNo) {
+  const record = cachedRecords.find(c => c.challan_no === challanNo);
+  if (!record) return;
+
+  document.getElementById('challan_no').value = record.challan_no || '';
+  document.getElementById('date').value = record.date || '';
+  document.getElementById('reason').value = record.reason || 'Supply on Approval';
+  document.getElementById('sender_name').value = record.sender_name || '';
+  document.getElementById('sender_address').value = record.sender_address || '';
+  document.getElementById('sender_state').value = record.sender_state || 'Maharashtra';
+  document.getElementById('sender_gstin').value = record.sender_gstin || '';
+  document.getElementById('receiver_name').value = record.receiver_name || '';
+  document.getElementById('receiver_address').value = record.receiver_address || '';
+  document.getElementById('receiver_state').value = record.receiver_state || 'Maharashtra';
+  document.getElementById('receiver_gstin').value = record.receiver_gstin || '';
+  document.getElementById('vehicle_no').value = record.vehicle_no || '';
+
+  const tbody = document.querySelector('#tb tbody');
+  tbody.innerHTML = '';
+
+  (record.items || []).forEach(itm => {
+    addRow();
+    const lastRow = tbody.lastElementChild;
+    lastRow.querySelector('.d').value = itm.description || '';
+    lastRow.querySelector('.h').value = itm.hsn || '';
+    lastRow.querySelector('.q').value = itm.qty || 1;
+    lastRow.querySelector('.gw').value = itm.gross_wt || '';
+    lastRow.querySelector('.nw').value = itm.net_wt || '';
+    lastRow.querySelector('.r').value = itm.rate || '';
+  });
+
+  calculateAll();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteChallan(challanNo) {
+  const pwd = prompt("Enter deletion password:");
+  if (!pwd) return;
+
+  if (pwd !== "090676") {
+    alert("Incorrect password! Deletion cancelled.");
+    return;
+  }
+
+  const res = await fetch(`/api/challans/${encodeURIComponent(challanNo)}`, {
+    method: 'DELETE',
+    headers: { 'X-Admin-Password': pwd }
+  });
+
+  if (res.ok) {
+    alert(`Challan ${challanNo} deleted successfully.`);
+    loadH();
+  } else {
+    alert("Failed to delete record.");
+  }
 }
 
 document.getElementById('f').onsubmit = async (e) => {
@@ -302,7 +383,7 @@ document.getElementById('f').onsubmit = async (e) => {
     body: JSON.stringify(payload)
   });
   const resData = await res.json();
-  alert('Challan & PDF Saved!');
+  alert('Challan & PDF Saved successfully!');
   window.open(resData.data.pdf_path, '_blank');
   loadH();
 };
