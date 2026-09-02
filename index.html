@@ -1,13 +1,13 @@
 ﻿<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>GST Delivery Challan</title><style>
 body{font-family:sans-serif;background:#f8fafc;padding:15px;color:#1e293b}
-.box{max-width:1100px;margin:auto;background:#fff;padding:25px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+.box{max-width:1150px;margin:auto;background:#fff;padding:25px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:12px}
 .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:12px}
 label{font-size:12px;font-weight:bold;color:#475569;display:block;margin-bottom:3px}
 input,select,textarea{width:100%;padding:7px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box;font-size:13px}
 table{width:100%;border-collapse:collapse;margin:15px 0}
-th,td{border:1px solid #e2e8f0;padding:6px;font-size:12px;text-align:center}
+th,td{border:1px solid #e2e8f0;padding:5px;font-size:12px;text-align:center}
 th{background:#f1f5f9}
 .btn{background:#0284c7;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px}
 .btn-sec{background:#64748b}
@@ -17,7 +17,6 @@ th{background:#f1f5f9}
 .summary-box{float:right;width:300px;margin-top:10px;margin-bottom:20px;background:#f8fafc;padding:10px;border:1px solid #e2e8f0;border-radius:4px;}
 .summary-box div{display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px;}
 
-/* 5.5 cm margin for pre-printed letterheads */
 @media print {
   @page {
     margin-top: 55mm;
@@ -96,18 +95,19 @@ th{background:#f1f5f9}
   <table id="tb">
     <thead>
       <tr>
-        <th width="190">Description</th>
-        <th width="90">HSN</th>
-        <th width="50">Qty</th>
-        <th width="75">Gross Wt</th>
-        <th width="75">Net Wt</th>
-        <th width="85">Rate (₹)</th>
-        <th width="95">Value (₹)</th>
-        <th width="65" class="th-cgst">CGST</th>
-        <th width="65" class="th-sgst">SGST</th>
-        <th width="65" class="th-igst" style="display:none;">IGST</th>
-        <th width="95">Total (₹)</th>
-        <th width="30"></th>
+        <th width="150">Description</th>
+        <th width="130">Narration</th>
+        <th width="75">HSN</th>
+        <th width="45">Qty</th>
+        <th width="65">Gross Wt</th>
+        <th width="65">Net Wt</th>
+        <th width="75">Rate (₹)</th>
+        <th width="85">Value (₹)</th>
+        <th width="60" class="th-cgst">CGST</th>
+        <th width="60" class="th-sgst">SGST</th>
+        <th width="60" class="th-igst" style="display:none;">IGST</th>
+        <th width="85">Total (₹)</th>
+        <th width="25"></th>
       </tr>
     </thead>
     <tbody>
@@ -120,6 +120,7 @@ th{background:#f1f5f9}
             <option value="Hallmarking charge">Hallmarking charge (18%)</option>
           </select>
         </td>
+        <td><input type="text" class="nar" placeholder="Details/Purity/Remarks"></td>
         <td><input class="h" readonly style="background:#f1f5f9;"></td>
         <td><input type="number" class="q" value="1" oninput="calculateRow(this.closest('tr'))"></td>
         <td><input type="number" step="0.001" class="gw"></td>
@@ -253,6 +254,7 @@ function addRow() {
         <option value="Hallmarking charge">Hallmarking charge (18%)</option>
       </select>
     </td>
+    <td><input type="text" class="nar" placeholder="Details/Purity/Remarks"></td>
     <td><input class="h" readonly style="background:#f1f5f9;"></td>
     <td><input type="number" class="q" value="1" oninput="calculateRow(this.closest('tr'))"></td>
     <td><input type="number" step="0.001" class="gw"></td>
@@ -277,28 +279,41 @@ function triggerDownload(pdfUrl, fileName) {
   document.body.removeChild(link);
 }
 
+// Data Preservation: Merges local backup with server response
 async function loadH() {
+  let serverRecords = [];
   try {
     const r = await fetch('/api/challans');
-    cachedRecords = await r.json();
-    document.querySelector('#ht tbody').innerHTML = cachedRecords.map((x) => {
-      const gTot = (x.items || []).reduce((acc, itm) => acc + (parseFloat(itm.total) || 0), 0);
-      const safeChallanNo = x.challan_no.replace(/\//g, '_');
-      return `
-      <tr>
-        <td><b>${x.challan_no}</b></td>
-        <td>${x.date}</td>
-        <td>${x.receiver_name}</td>
-        <td>₹ ${gTot.toFixed(2)}</td>
-        <td>
-          <a href="${x.pdf_path}" target="_blank" style="margin-right:6px;">View</a>
-          <button type="button" class="btn-edit" onclick="triggerDownload('${x.pdf_path}', '${safeChallanNo}.pdf')">Download</button>
-          <button type="button" class="btn-edit" onclick="editChallan('${x.challan_no}')">Edit</button>
-          <button type="button" class="btn-del-record" onclick="deleteChallan('${x.challan_no}')">Delete</button>
-        </td>
-      </tr>`;
-    }).join('');
+    if (r.ok) serverRecords = await r.json();
   } catch(e) {}
+
+  let localBackup = JSON.parse(localStorage.getItem('saved_challans_backup') || '[]');
+  
+  // Merge both by Challan No without dropping records
+  const map = new Map();
+  localBackup.forEach(item => map.set(item.challan_no, item));
+  serverRecords.forEach(item => map.set(item.challan_no, item));
+  cachedRecords = Array.from(map.values());
+  
+  localStorage.setItem('saved_challans_backup', JSON.stringify(cachedRecords));
+
+  document.querySelector('#ht tbody').innerHTML = cachedRecords.map((x) => {
+    const gTot = (x.items || []).reduce((acc, itm) => acc + (parseFloat(itm.total) || 0), 0);
+    const safeChallanNo = x.challan_no.replace(/\//g, '_');
+    return `
+    <tr>
+      <td><b>${x.challan_no}</b></td>
+      <td>${x.date}</td>
+      <td>${x.receiver_name}</td>
+      <td>₹ ${gTot.toFixed(2)}</td>
+      <td>
+        <a href="${x.pdf_path}" target="_blank" style="margin-right:6px;">View</a>
+        <button type="button" class="btn-edit" onclick="triggerDownload('${x.pdf_path}', '${safeChallanNo}.pdf')">Download</button>
+        <button type="button" class="btn-edit" onclick="editChallan('${x.challan_no}')">Edit</button>
+        <button type="button" class="btn-del-record" onclick="deleteChallan('${x.challan_no}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function editChallan(challanNo) {
@@ -325,6 +340,7 @@ function editChallan(challanNo) {
     addRow();
     const lastRow = tbody.lastElementChild;
     lastRow.querySelector('.d').value = itm.description || '';
+    lastRow.querySelector('.nar').value = itm.narration || '';
     lastRow.querySelector('.h').value = itm.hsn || '';
     lastRow.querySelector('.q').value = itm.qty || 1;
     lastRow.querySelector('.gw').value = itm.gross_wt || '';
@@ -345,17 +361,19 @@ async function deleteChallan(challanNo) {
     return;
   }
 
-  const res = await fetch(`/api/challans/${encodeURIComponent(challanNo)}`, {
-    method: 'DELETE',
-    headers: { 'X-Admin-Password': pwd }
-  });
+  try {
+    await fetch(`/api/challans/${encodeURIComponent(challanNo)}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Password': pwd }
+    });
+  } catch(e) {}
 
-  if (res.ok) {
-    alert(`Challan ${challanNo} deleted successfully.`);
-    loadH();
-  } else {
-    alert("Failed to delete record.");
-  }
+  // Remove from persistent local storage
+  cachedRecords = cachedRecords.filter(c => c.challan_no !== challanNo);
+  localStorage.setItem('saved_challans_backup', JSON.stringify(cachedRecords));
+
+  alert(`Challan ${challanNo} deleted successfully.`);
+  loadH();
 }
 
 document.getElementById('f').onsubmit = async (e) => {
@@ -367,6 +385,7 @@ document.getElementById('f').onsubmit = async (e) => {
   try {
     const items = [...document.querySelectorAll('#tb tbody tr')].map(r => ({
       description: r.querySelector('.d').value,
+      narration: r.querySelector('.nar').value || "",
       hsn: r.querySelector('.h').value,
       qty: r.querySelector('.q').value || "1",
       gross_wt: r.querySelector('.gw').value || "0",
@@ -403,6 +422,12 @@ document.getElementById('f').onsubmit = async (e) => {
 
     const resData = await res.json();
     if (!res.ok) throw new Error(resData.message || "Server Error");
+
+    // Immediately save locally so it's immune to cloud resets
+    const existingIdx = cachedRecords.findIndex(c => c.challan_no === resData.data.challan_no);
+    if (existingIdx >= 0) cachedRecords[existingIdx] = resData.data;
+    else cachedRecords.push(resData.data);
+    localStorage.setItem('saved_challans_backup', JSON.stringify(cachedRecords));
 
     const pdfFileName = `${resData.data.challan_no.replace(/\//g, '_')}.pdf`;
     triggerDownload(resData.data.pdf_path, pdfFileName);

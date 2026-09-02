@@ -26,19 +26,18 @@ def save_r(data):
     with open(REC_FILE, "w", encoding="utf-8") as f: json.dump(data, f, indent=2)
 
 def make_pdf(data, path):
-    # 5.5 cm top margin for pre-printed letterhead
     doc = SimpleDocTemplate(
         path, 
         pagesize=A4, 
-        rightMargin=20, 
-        leftMargin=20, 
+        rightMargin=18, 
+        leftMargin=18, 
         topMargin=5.5 * cm, 
-        bottomMargin=20
+        bottomMargin=18
     )
     s = getSampleStyleSheet()
     normal = s["Normal"]
-    normal.fontSize = 8
-    normal.leading = 10
+    normal.fontSize = 7.5
+    normal.leading = 9.5
     
     elems = [
         Paragraph("<b>DELIVERY CHALLAN</b>", ParagraphStyle("T", parent=s["Heading1"], alignment=1, fontSize=13)),
@@ -53,7 +52,7 @@ def make_pdf(data, path):
         [Paragraph(f"<b>Consignee (Recipient):</b><br/>{data.get('receiver_name','')}<br/>{data.get('receiver_address','')}<br/>State: {data.get('receiver_state','')}<br/>GSTIN/PAN: {data.get('receiver_gstin','')}", normal),
          Paragraph(f"<b>Vehicle / Docket:</b> {data.get('vehicle_no','')}<br/><b>Place of Supply:</b> {data.get('receiver_state','')}", normal)]
     ]
-    t_h = Table(hd, colWidths=[280, 275])
+    t_h = Table(hd, colWidths=[285, 275])
     t_h.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 1, colors.black),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.grey),
@@ -62,13 +61,13 @@ def make_pdf(data, path):
     ]))
     elems.extend([t_h, Spacer(1, 8)])
     
-    # Tables with Gross Wt included
+    # Headers with Narration added
     if is_interstate:
-        headers = ["Sr.", "Description", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
-        col_w = [20, 105, 50, 26, 45, 45, 55, 69, 65, 75]
+        headers = ["Sr.", "Description", "Narration", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
+        col_w = [18, 85, 75, 42, 22, 38, 38, 48, 62, 58, 66]
     else:
-        headers = ["Sr.", "Description", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "CGST (Rs.)", "SGST (Rs.)", "Total (Rs.)"]
-        col_w = [18, 95, 48, 25, 43, 43, 50, 63, 55, 55, 60]
+        headers = ["Sr.", "Description", "Narration", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "CGST (Rs.)", "SGST (Rs.)", "Total (Rs.)"]
+        col_w = [16, 75, 68, 40, 20, 36, 36, 44, 55, 48, 48, 54]
 
     rows = [headers]
     tot_gross = 0
@@ -91,6 +90,7 @@ def make_pdf(data, path):
         
         gw_str = f"{gw:.3f}" if gw else ""
         nw_str = f"{nw:.3f}" if nw else ""
+        narration = itm.get("narration", "")
 
         if is_interstate:
             igst = float(itm.get("igst", 0) or 0)
@@ -98,7 +98,7 @@ def make_pdf(data, path):
             item_tot = taxable + igst
             tot_grand += item_tot
             rows.append([
-                str(i), itm.get("description",""), itm.get("hsn",""), str(itm.get("qty","")),
+                str(i), itm.get("description",""), narration, itm.get("hsn",""), str(itm.get("qty","")),
                 gw_str, nw_str, f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{igst:.2f}", f"{item_tot:.2f}"
             ])
@@ -110,25 +110,23 @@ def make_pdf(data, path):
             item_tot = taxable + cgst + sgst
             tot_grand += item_tot
             rows.append([
-                str(i), itm.get("description",""), itm.get("hsn",""), str(itm.get("qty","")),
+                str(i), itm.get("description",""), narration, itm.get("hsn",""), str(itm.get("qty","")),
                 gw_str, nw_str, f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{cgst:.2f}", f"{sgst:.2f}", f"{item_tot:.2f}"
             ])
 
-    # Extend table with empty blank rows
     min_rows = 8
-    empty_cols = 10 if is_interstate else 11
+    empty_cols = 11 if is_interstate else 12
     while len(rows) - 1 < min_rows:
         rows.append([""] * empty_cols)
 
-    # Total row
     tot_gw_display = f"{tot_gross:.3f}" if tot_gross > 0 else ""
     tot_nw_display = f"{tot_net:.3f}" if tot_net > 0 else ""
 
     if is_interstate:
-        rows.append(["", "Total", "", "", tot_gw_display, tot_nw_display, "", f"{tot_taxable:.2f}", f"{tot_igst:.2f}", f"{tot_grand:.2f}"])
+        rows.append(["", "Total", "", "", "", tot_gw_display, tot_nw_display, "", f"{tot_taxable:.2f}", f"{tot_igst:.2f}", f"{tot_grand:.2f}"])
     else:
-        rows.append(["", "Total", "", "", tot_gw_display, tot_nw_display, "", f"{tot_taxable:.2f}", f"{tot_cgst:.2f}", f"{tot_sgst:.2f}", f"{tot_grand:.2f}"])
+        rows.append(["", "Total", "", "", "", tot_gw_display, tot_nw_display, "", f"{tot_taxable:.2f}", f"{tot_cgst:.2f}", f"{tot_sgst:.2f}", f"{tot_grand:.2f}"])
 
     row_heights = [20] + [22] * (len(rows) - 2) + [22]
 
@@ -138,18 +136,18 @@ def make_pdf(data, path):
         ('GRID', (0,0), (-1,-2), 0.5, colors.grey),
         ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('ALIGN', (1,1), (1,-1), 'LEFT'),
+        ('ALIGN', (1,1), (2,-1), 'LEFT'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 7.5),
+        ('FONTSIZE', (0,0), (-1,-1), 7),
         ('LINEABOVE', (0,-1), (-1,-1), 1, colors.black),
-        ('PADDING', (0,0), (-1,-1), 2.5)
+        ('PADDING', (0,0), (-1,-1), 2)
     ]))
-    elems.extend([t_i, Spacer(1, 10)])
+    elems.extend([t_i, Spacer(1, 8)])
     
     elems.append(Paragraph("<font size=6.5>Terms: Goods dispatched on challan basis. Not a tax invoice. Subject to Home Jurisdiction.</font>", normal))
-    elems.append(Spacer(1, 30))
+    elems.append(Spacer(1, 25))
     
     sig = [[
         Paragraph("Receiver's Signature & Stamp", normal),
