@@ -1,4 +1,4 @@
-﻿import os, json, webbrowser, urllib.request
+﻿import os, json, webbrowser, shutil
 from datetime import datetime
 from threading import Timer
 from flask import Flask, request, jsonify, send_from_directory
@@ -9,9 +9,19 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 app = Flask(__name__, static_folder=".", static_url_path="")
+
+# Default app data directory
 DATA_DIR = os.path.join(os.path.dirname(__file__), "challans")
 os.makedirs(DATA_DIR, exist_ok=True)
 REC_FILE = os.path.join(DATA_DIR, "records.json")
+
+# Target OneDrive folder on your PC
+ONEDRIVE_TARGET_DIR = r"C:\Users\krith\OneDrive\Desktop\Delivery Challans"
+try:
+    if os.path.exists(r"C:\Users\krith"):
+        os.makedirs(ONEDRIVE_TARGET_DIR, exist_ok=True)
+except Exception:
+    pass
 
 DELETE_PASSWORD = "090676"
 
@@ -69,7 +79,6 @@ def make_pdf(data, path):
     ]))
     elems.extend([t_h, Spacer(1, 8)])
     
-    # Adjusted column widths to allocate sufficient space for Narration and prevent overlap
     if is_interstate:
         headers = ["Sr.", "Description", "Narration", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
         col_w = [18, 75, 88, 44, 20, 42, 42, 46, 60, 58, 67]
@@ -99,7 +108,6 @@ def make_pdf(data, path):
         gw_str = f"{gw:.3f}" if gw else ""
         nw_str = f"{nw:.3f}" if nw else ""
 
-        # Using Paragraph ensures long text wraps onto a newline rather than overlapping next cell
         desc_p = Paragraph(itm.get("description", ""), cell_style)
         narr_p = Paragraph(itm.get("narration", ""), cell_style)
 
@@ -187,9 +195,18 @@ def add_c():
             d["date"] = datetime.now().strftime("%Y-%m-%d")
             
         fn = f"{d['challan_no'].replace('/','_')}.pdf"
-        make_pdf(d, os.path.join(DATA_DIR, fn))
+        local_path = os.path.join(DATA_DIR, fn)
+        make_pdf(d, local_path)
         d["pdf_path"] = f"/challans/{fn}"
         
+        # Auto-copy directly into OneDrive folder if available on this machine
+        if os.path.exists(ONEDRIVE_TARGET_DIR):
+            try:
+                onedrive_file = os.path.join(ONEDRIVE_TARGET_DIR, fn)
+                shutil.copyfile(local_path, onedrive_file)
+            except Exception:
+                pass
+
         if existing_index >= 0:
             r[existing_index] = d
         else:
@@ -216,13 +233,17 @@ def delete_c(challan_no):
         try: os.remove(file_path)
         except: pass
         
+    onedrive_file = os.path.join(ONEDRIVE_TARGET_DIR, fn)
+    if os.path.exists(onedrive_file):
+        try: os.remove(onedrive_file)
+        except: pass
+        
     return jsonify({"status": "success"})
 
 @app.route("/challans/<path:f>")
 def dl(f):
     target = os.path.join(DATA_DIR, f)
     if not os.path.exists(target):
-        # Auto-reconstruct PDF on demand if wiped by a Render restart
         base_name = os.path.splitext(f)[0]
         r = load_r()
         entry = next((c for c in r if c.get("challan_no", "").replace("/", "_") == base_name), None)
