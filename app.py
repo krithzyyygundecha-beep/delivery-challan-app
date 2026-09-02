@@ -30,8 +30,8 @@ def make_pdf(data, path):
     doc = SimpleDocTemplate(
         path, 
         pagesize=A4, 
-        rightMargin=25, 
-        leftMargin=25, 
+        rightMargin=20, 
+        leftMargin=20, 
         topMargin=5.5 * cm, 
         bottomMargin=20
     )
@@ -53,7 +53,7 @@ def make_pdf(data, path):
         [Paragraph(f"<b>Consignee (Recipient):</b><br/>{data.get('receiver_name','')}<br/>{data.get('receiver_address','')}<br/>State: {data.get('receiver_state','')}<br/>GSTIN/PAN: {data.get('receiver_gstin','')}", normal),
          Paragraph(f"<b>Vehicle / Docket:</b> {data.get('vehicle_no','')}<br/><b>Place of Supply:</b> {data.get('receiver_state','')}", normal)]
     ]
-    t_h = Table(hd, colWidths=[275, 270])
+    t_h = Table(hd, colWidths=[280, 275])
     t_h.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 1, colors.black),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.grey),
@@ -62,15 +62,17 @@ def make_pdf(data, path):
     ]))
     elems.extend([t_h, Spacer(1, 8)])
     
-    # Headers using Rs. instead of Unicode rupee sign to avoid black box
+    # Tables with Gross Wt included
     if is_interstate:
-        headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
-        col_w = [22, 120, 55, 30, 48, 60, 70, 65, 65]
+        headers = ["Sr.", "Description", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
+        col_w = [20, 105, 50, 26, 45, 45, 55, 69, 65, 75]
     else:
-        headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "CGST (Rs.)", "SGST (Rs.)", "Total (Rs.)"]
-        col_w = [20, 110, 50, 28, 44, 55, 63, 55, 55, 60]
+        headers = ["Sr.", "Description", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "CGST (Rs.)", "SGST (Rs.)", "Total (Rs.)"]
+        col_w = [18, 95, 48, 25, 43, 43, 50, 63, 55, 55, 60]
 
     rows = [headers]
+    tot_gross = 0
+    tot_net = 0
     tot_taxable = 0
     tot_cgst = 0
     tot_sgst = 0
@@ -82,6 +84,14 @@ def make_pdf(data, path):
         taxable = float(itm.get("value", 0) or 0)
         tot_taxable += taxable
         
+        gw = float(itm.get("gross_wt", 0) or 0)
+        nw = float(itm.get("net_wt", 0) or 0)
+        tot_gross += gw
+        tot_net += nw
+        
+        gw_str = f"{gw:.3f}" if gw else ""
+        nw_str = f"{nw:.3f}" if nw else ""
+
         if is_interstate:
             igst = float(itm.get("igst", 0) or 0)
             tot_igst += igst
@@ -89,7 +99,7 @@ def make_pdf(data, path):
             tot_grand += item_tot
             rows.append([
                 str(i), itm.get("description",""), itm.get("hsn",""), str(itm.get("qty","")),
-                str(itm.get("net_wt","")), f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
+                gw_str, nw_str, f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{igst:.2f}", f"{item_tot:.2f}"
             ])
         else:
@@ -101,21 +111,24 @@ def make_pdf(data, path):
             tot_grand += item_tot
             rows.append([
                 str(i), itm.get("description",""), itm.get("hsn",""), str(itm.get("qty","")),
-                str(itm.get("net_wt","")), f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
+                gw_str, nw_str, f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{cgst:.2f}", f"{sgst:.2f}", f"{item_tot:.2f}"
             ])
 
-    # Extend table with empty blank rows so it nicely fills the page
+    # Extend table with empty blank rows
     min_rows = 8
-    empty_cols = 9 if is_interstate else 10
+    empty_cols = 10 if is_interstate else 11
     while len(rows) - 1 < min_rows:
         rows.append([""] * empty_cols)
 
     # Total row
+    tot_gw_display = f"{tot_gross:.3f}" if tot_gross > 0 else ""
+    tot_nw_display = f"{tot_net:.3f}" if tot_net > 0 else ""
+
     if is_interstate:
-        rows.append(["", "Total", "", "", "", "", f"{tot_taxable:.2f}", f"{tot_igst:.2f}", f"{tot_grand:.2f}"])
+        rows.append(["", "Total", "", "", tot_gw_display, tot_nw_display, "", f"{tot_taxable:.2f}", f"{tot_igst:.2f}", f"{tot_grand:.2f}"])
     else:
-        rows.append(["", "Total", "", "", "", "", f"{tot_taxable:.2f}", f"{tot_cgst:.2f}", f"{tot_sgst:.2f}", f"{tot_grand:.2f}"])
+        rows.append(["", "Total", "", "", tot_gw_display, tot_nw_display, "", f"{tot_taxable:.2f}", f"{tot_cgst:.2f}", f"{tot_sgst:.2f}", f"{tot_grand:.2f}"])
 
     row_heights = [20] + [22] * (len(rows) - 2) + [22]
 
@@ -129,9 +142,9 @@ def make_pdf(data, path):
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('FONTSIZE', (0,0), (-1,-1), 7.5),
         ('LINEABOVE', (0,-1), (-1,-1), 1, colors.black),
-        ('PADDING', (0,0), (-1,-1), 3)
+        ('PADDING', (0,0), (-1,-1), 2.5)
     ]))
     elems.extend([t_i, Spacer(1, 10)])
     
