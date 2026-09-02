@@ -17,7 +17,6 @@ th{background:#f1f5f9}
 .summary-box{float:right;width:300px;margin-top:10px;margin-bottom:20px;background:#f8fafc;padding:10px;border:1px solid #e2e8f0;border-radius:4px;}
 .summary-box div{display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px;}
 
-/* 16cm margin for browser printing onto pre-printed letterheads */
 @media print {
   @page {
     margin-top: 160mm;
@@ -266,12 +265,23 @@ function addRow() {
   tbody.appendChild(tr);
 }
 
+// Function to download PDF automatically to the user's device
+function triggerDownload(pdfUrl, fileName) {
+  const link = document.createElement('a');
+  link.href = pdfUrl;
+  link.setAttribute('download', fileName || 'Delivery_Challan.pdf');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 async function loadH() {
   try {
     const r = await fetch('/api/challans');
     cachedRecords = await r.json();
-    document.querySelector('#ht tbody').innerHTML = cachedRecords.map((x, idx) => {
+    document.querySelector('#ht tbody').innerHTML = cachedRecords.map((x) => {
       const gTot = (x.items || []).reduce((acc, itm) => acc + (parseFloat(itm.total) || 0), 0);
+      const safeChallanNo = x.challan_no.replace(/\//g, '_');
       return `
       <tr>
         <td><b>${x.challan_no}</b></td>
@@ -279,7 +289,8 @@ async function loadH() {
         <td>${x.receiver_name}</td>
         <td>₹ ${gTot.toFixed(2)}</td>
         <td>
-          <a href="${x.pdf_path}" target="_blank" style="margin-right:8px;">PDF</a>
+          <a href="${x.pdf_path}" target="_blank" style="margin-right:6px;">View</a>
+          <button type="button" class="btn-edit" onclick="triggerDownload('${x.pdf_path}', '${safeChallanNo}.pdf')">Download</button>
           <button type="button" class="btn-edit" onclick="editChallan('${x.challan_no}')">Edit</button>
           <button type="button" class="btn-del-record" onclick="deleteChallan('${x.challan_no}')">Delete</button>
         </td>
@@ -383,8 +394,14 @@ document.getElementById('f').onsubmit = async (e) => {
     body: JSON.stringify(payload)
   });
   const resData = await res.json();
-  alert('Challan & PDF Saved successfully!');
+  
+  // 1. Automatically trigger direct download to browser downloads folder
+  const pdfFileName = `${resData.data.challan_no.replace(/\//g, '_')}.pdf`;
+  triggerDownload(resData.data.pdf_path, pdfFileName);
+  
+  // 2. Open preview in a new tab
   window.open(resData.data.pdf_path, '_blank');
+  
   loadH();
 };
 
