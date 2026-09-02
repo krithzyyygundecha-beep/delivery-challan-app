@@ -1,4 +1,4 @@
-﻿import os, json, webbrowser
+﻿import os, json, webbrowser, urllib.request
 from datetime import datetime
 from threading import Timer
 from flask import Flask, request, jsonify, send_from_directory
@@ -38,6 +38,14 @@ def make_pdf(data, path):
     normal = s["Normal"]
     normal.fontSize = 7.5
     normal.leading = 9.5
+
+    cell_style = ParagraphStyle(
+        "TableCell",
+        parent=normal,
+        fontSize=7,
+        leading=8.5,
+        alignment=0
+    )
     
     elems = [
         Paragraph("<b>DELIVERY CHALLAN</b>", ParagraphStyle("T", parent=s["Heading1"], alignment=1, fontSize=13)),
@@ -61,13 +69,13 @@ def make_pdf(data, path):
     ]))
     elems.extend([t_h, Spacer(1, 8)])
     
-    # Headers with Narration added
+    # Adjusted column widths to allocate sufficient space for Narration and prevent overlap
     if is_interstate:
         headers = ["Sr.", "Description", "Narration", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
-        col_w = [18, 85, 75, 42, 22, 38, 38, 48, 62, 58, 66]
+        col_w = [18, 75, 88, 44, 20, 42, 42, 46, 60, 58, 67]
     else:
         headers = ["Sr.", "Description", "Narration", "HSN", "Qty", "Gross Wt", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "CGST (Rs.)", "SGST (Rs.)", "Total (Rs.)"]
-        col_w = [16, 75, 68, 40, 20, 36, 36, 44, 55, 48, 48, 54]
+        col_w = [16, 68, 78, 42, 18, 40, 40, 42, 54, 50, 50, 62]
 
     rows = [headers]
     tot_gross = 0
@@ -90,7 +98,10 @@ def make_pdf(data, path):
         
         gw_str = f"{gw:.3f}" if gw else ""
         nw_str = f"{nw:.3f}" if nw else ""
-        narration = itm.get("narration", "")
+
+        # Using Paragraph ensures long text wraps onto a newline rather than overlapping next cell
+        desc_p = Paragraph(itm.get("description", ""), cell_style)
+        narr_p = Paragraph(itm.get("narration", ""), cell_style)
 
         if is_interstate:
             igst = float(itm.get("igst", 0) or 0)
@@ -98,7 +109,7 @@ def make_pdf(data, path):
             item_tot = taxable + igst
             tot_grand += item_tot
             rows.append([
-                str(i), itm.get("description",""), narration, itm.get("hsn",""), str(itm.get("qty","")),
+                str(i), desc_p, narr_p, itm.get("hsn",""), str(itm.get("qty","")),
                 gw_str, nw_str, f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{igst:.2f}", f"{item_tot:.2f}"
             ])
@@ -110,7 +121,7 @@ def make_pdf(data, path):
             item_tot = taxable + cgst + sgst
             tot_grand += item_tot
             rows.append([
-                str(i), itm.get("description",""), narration, itm.get("hsn",""), str(itm.get("qty","")),
+                str(i), desc_p, narr_p, itm.get("hsn",""), str(itm.get("qty","")),
                 gw_str, nw_str, f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{cgst:.2f}", f"{sgst:.2f}", f"{item_tot:.2f}"
             ])
@@ -208,7 +219,16 @@ def delete_c(challan_no):
     return jsonify({"status": "success"})
 
 @app.route("/challans/<path:f>")
-def dl(f): return send_from_directory(DATA_DIR, f)
+def dl(f):
+    target = os.path.join(DATA_DIR, f)
+    if not os.path.exists(target):
+        # Auto-reconstruct PDF on demand if wiped by a Render restart
+        base_name = os.path.splitext(f)[0]
+        r = load_r()
+        entry = next((c for c in r if c.get("challan_no", "").replace("/", "_") == base_name), None)
+        if entry:
+            make_pdf(entry, target)
+    return send_from_directory(DATA_DIR, f)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
