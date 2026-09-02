@@ -9,7 +9,7 @@ input,select,textarea{width:100%;padding:7px;border:1px solid #cbd5e1;border-rad
 table{width:100%;border-collapse:collapse;margin:15px 0}
 th,td{border:1px solid #e2e8f0;padding:6px;font-size:12px;text-align:center}
 th{background:#f1f5f9}
-.btn{background:#0284c7;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold}
+.btn{background:#0284c7;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px}
 .btn-sec{background:#64748b}
 .btn-edit{background:#0284c7;padding:4px 8px;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px}
 .btn-del-record{background:#ef4444;padding:4px 8px;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;margin-left:5px}
@@ -17,9 +17,10 @@ th{background:#f1f5f9}
 .summary-box{float:right;width:300px;margin-top:10px;margin-bottom:20px;background:#f8fafc;padding:10px;border:1px solid #e2e8f0;border-radius:4px;}
 .summary-box div{display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px;}
 
+/* 5.5 cm margin for pre-printed letterheads */
 @media print {
   @page {
-    margin-top: 160mm;
+    margin-top: 55mm;
     margin-left: 10mm;
     margin-right: 10mm;
     margin-bottom: 10mm;
@@ -146,8 +147,10 @@ th{background:#f1f5f9}
 
   <div style="clear:both;"></div>
 
-  <button type="submit" class="btn">Save & Generate PDF</button>
-  <button type="button" class="btn btn-sec" onclick="window.print()">Direct Print (16cm Letterhead)</button>
+  <div style="margin-top:15px;">
+    <button type="submit" id="btnSubmit" class="btn">Save & Generate PDF</button>
+    <button type="button" class="btn btn-sec" onclick="window.print()">Direct Print (5.5cm Letterhead)</button>
+  </div>
 </form>
 
 <hr style="margin:25px 0">
@@ -265,11 +268,10 @@ function addRow() {
   tbody.appendChild(tr);
 }
 
-// Function to download PDF automatically to the user's device
 function triggerDownload(pdfUrl, fileName) {
   const link = document.createElement('a');
   link.href = pdfUrl;
-  link.setAttribute('download', fileName || 'Delivery_Challan.pdf');
+  link.download = fileName || 'Delivery_Challan.pdf';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -358,51 +360,61 @@ async function deleteChallan(challanNo) {
 
 document.getElementById('f').onsubmit = async (e) => {
   e.preventDefault();
-  const items = [...document.querySelectorAll('#tb tbody tr')].map(r => ({
-    description: r.querySelector('.d').value,
-    hsn: r.querySelector('.h').value,
-    qty: r.querySelector('.q').value,
-    gross_wt: r.querySelector('.gw').value,
-    net_wt: r.querySelector('.nw').value,
-    rate: r.querySelector('.r').value,
-    value: r.querySelector('.v').value,
-    cgst: r.querySelector('.cgst').value,
-    sgst: r.querySelector('.sgst').value,
-    igst: r.querySelector('.igst').value,
-    total: r.querySelector('.tot').value
-  }));
+  const btn = document.getElementById('btnSubmit');
+  btn.innerText = "Generating...";
+  btn.disabled = true;
 
-  const payload = {
-    challan_no: document.getElementById('challan_no').value,
-    date: document.getElementById('date').value,
-    reason: document.getElementById('reason').value,
-    sender_name: document.getElementById('sender_name').value,
-    sender_address: document.getElementById('sender_address').value,
-    sender_state: document.getElementById('sender_state').value,
-    sender_gstin: document.getElementById('sender_gstin').value,
-    receiver_name: document.getElementById('receiver_name').value,
-    receiver_address: document.getElementById('receiver_address').value,
-    receiver_state: document.getElementById('receiver_state').value,
-    receiver_gstin: document.getElementById('receiver_gstin').value,
-    vehicle_no: document.getElementById('vehicle_no').value,
-    items
-  };
+  try {
+    const items = [...document.querySelectorAll('#tb tbody tr')].map(r => ({
+      description: r.querySelector('.d').value,
+      hsn: r.querySelector('.h').value,
+      qty: r.querySelector('.q').value || "1",
+      gross_wt: r.querySelector('.gw').value || "0",
+      net_wt: r.querySelector('.nw').value || "0",
+      rate: r.querySelector('.r').value || "0",
+      value: r.querySelector('.v').value || "0",
+      cgst: r.querySelector('.cgst').value || "0",
+      sgst: r.querySelector('.sgst').value || "0",
+      igst: r.querySelector('.igst').value || "0",
+      total: r.querySelector('.tot').value || "0"
+    }));
 
-  const res = await fetch('/api/challans', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const resData = await res.json();
-  
-  // 1. Automatically trigger direct download to browser downloads folder
-  const pdfFileName = `${resData.data.challan_no.replace(/\//g, '_')}.pdf`;
-  triggerDownload(resData.data.pdf_path, pdfFileName);
-  
-  // 2. Open preview in a new tab
-  window.open(resData.data.pdf_path, '_blank');
-  
-  loadH();
+    const payload = {
+      challan_no: document.getElementById('challan_no').value.trim(),
+      date: document.getElementById('date').value,
+      reason: document.getElementById('reason').value,
+      sender_name: document.getElementById('sender_name').value,
+      sender_address: document.getElementById('sender_address').value,
+      sender_state: document.getElementById('sender_state').value,
+      sender_gstin: document.getElementById('sender_gstin').value,
+      receiver_name: document.getElementById('receiver_name').value,
+      receiver_address: document.getElementById('receiver_address').value,
+      receiver_state: document.getElementById('receiver_state').value,
+      receiver_gstin: document.getElementById('receiver_gstin').value,
+      vehicle_no: document.getElementById('vehicle_no').value,
+      items
+    };
+
+    const res = await fetch('/api/challans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const resData = await res.json();
+    if (!res.ok) throw new Error(resData.message || "Server Error");
+
+    const pdfFileName = `${resData.data.challan_no.replace(/\//g, '_')}.pdf`;
+    triggerDownload(resData.data.pdf_path, pdfFileName);
+    
+    await loadH();
+    alert("Challan & PDF Saved successfully!");
+  } catch (err) {
+    alert("Error saving challan: " + err.message);
+  } finally {
+    btn.innerText = "Save & Generate PDF";
+    btn.disabled = false;
+  }
 };
 
 calculateAll();

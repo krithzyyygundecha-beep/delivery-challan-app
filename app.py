@@ -26,13 +26,13 @@ def save_r(data):
     with open(REC_FILE, "w", encoding="utf-8") as f: json.dump(data, f, indent=2)
 
 def make_pdf(data, path):
-    # 16 cm top margin reserved for pre-printed letterhead
+    # Top margin set to exactly 5.5 cm for pre-printed letterhead
     doc = SimpleDocTemplate(
         path, 
         pagesize=A4, 
         rightMargin=25, 
         leftMargin=25, 
-        topMargin=16 * cm, 
+        topMargin=5.5 * cm, 
         bottomMargin=20
     )
     s = getSampleStyleSheet()
@@ -87,7 +87,7 @@ def make_pdf(data, path):
             tot_grand += item_tot
             rows.append([
                 str(i), itm.get("description",""), itm.get("hsn",""), str(itm.get("qty","")),
-                str(itm.get("net_wt","")), f"{float(itm.get('rate',0)):.2f}", f"{taxable:.2f}",
+                str(itm.get("net_wt","")), f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{igst:.2f}", f"{item_tot:.2f}"
             ])
         else:
@@ -99,7 +99,7 @@ def make_pdf(data, path):
             tot_grand += item_tot
             rows.append([
                 str(i), itm.get("description",""), itm.get("hsn",""), str(itm.get("qty","")),
-                str(itm.get("net_wt","")), f"{float(itm.get('rate',0)):.2f}", f"{taxable:.2f}",
+                str(itm.get("net_wt","")), f"{float(itm.get('rate',0) or 0):.2f}", f"{taxable:.2f}",
                 f"{cgst:.2f}", f"{sgst:.2f}", f"{item_tot:.2f}"
             ])
 
@@ -124,7 +124,7 @@ def make_pdf(data, path):
     elems.extend([t_i, Spacer(1, 12)])
     
     elems.append(Paragraph("<font size=6.5>Terms: Goods dispatched on challan basis. Not a tax invoice. Subject to Home Jurisdiction.</font>", normal))
-    elems.append(Spacer(1, 20))
+    elems.append(Spacer(1, 25))
     
     sig = [[
         Paragraph("Receiver's Signature & Stamp", normal),
@@ -141,28 +141,30 @@ def get_c(): return jsonify(load_r())
 
 @app.route("/api/challans", methods=["POST"])
 def add_c():
-    d = request.json
-    r = load_r()
-    
-    # If editing an existing challan, replace it in the records list
-    existing_index = next((i for i, c in enumerate(r) if c.get("challan_no") == d.get("challan_no")), -1)
-    
-    if not d.get("challan_no"):
-        d["challan_no"] = f"DC-{datetime.now().strftime('%Y%m%d')}-{len(r)+1:03d}"
-    if not d.get("date"):
-        d["date"] = datetime.now().strftime("%d-%m-%Y")
+    try:
+        d = request.json
+        r = load_r()
         
-    fn = f"{d['challan_no'].replace('/','_')}.pdf"
-    make_pdf(d, os.path.join(DATA_DIR, fn))
-    d["pdf_path"] = f"/challans/{fn}"
-    
-    if existing_index >= 0:
-        r[existing_index] = d
-    else:
-        r.append(d)
+        existing_index = next((i for i, c in enumerate(r) if c.get("challan_no") == d.get("challan_no")), -1)
         
-    save_r(r)
-    return jsonify({"status":"success", "data": d})
+        if not d.get("challan_no"):
+            d["challan_no"] = f"DC-{datetime.now().strftime('%Y%m%d')}-{len(r)+1:03d}"
+        if not d.get("date"):
+            d["date"] = datetime.now().strftime("%Y-%m-%d")
+            
+        fn = f"{d['challan_no'].replace('/','_')}.pdf"
+        make_pdf(d, os.path.join(DATA_DIR, fn))
+        d["pdf_path"] = f"/challans/{fn}"
+        
+        if existing_index >= 0:
+            r[existing_index] = d
+        else:
+            r.append(d)
+            
+        save_r(r)
+        return jsonify({"status":"success", "data": d})
+    except Exception as e:
+        return jsonify({"status":"error", "message": str(e)}), 500
 
 @app.route("/api/challans/<path:challan_no>", methods=["DELETE"])
 def delete_c(challan_no):
@@ -171,14 +173,9 @@ def delete_c(challan_no):
         return jsonify({"status": "error", "message": "Incorrect password"}), 403
 
     r = load_r()
-    item_to_remove = next((c for c in r if c.get("challan_no") == challan_no), None)
-    if not item_to_remove:
-        return jsonify({"status": "error", "message": "Record not found"}), 404
-        
     r = [c for c in r if c.get("challan_no") != challan_no]
     save_r(r)
     
-    # Remove local PDF file
     fn = f"{challan_no.replace('/','_')}.pdf"
     file_path = os.path.join(DATA_DIR, fn)
     if os.path.exists(file_path):
