@@ -50,8 +50,8 @@ th{background:#f1f5f9}
 
   <div class="grid-2">
     <div>
-      <label>Sender / Consignor Name</label><input id="sender_name" required>
-      <label style="margin-top:6px;">Sender Address</label><textarea id="sender_address" rows="2"></textarea>
+      <label>Sender / Consignor Name</label><input id="sender_name" value="Millionaire Gold nx" required>
+      <label style="margin-top:6px;">Sender Address</label><textarea id="sender_address" rows="2">89/91, Laxmidas Gopaldas bldg, 1st Floor, Vithalwadi, Near Glitz Mall, Kalbadevi, Mumbai-400 002</textarea>
       <div class="grid-2" style="margin-top:6px;margin-bottom:0;">
         <div>
           <label>Sender State</label>
@@ -66,7 +66,7 @@ th{background:#f1f5f9}
             <option value="Other State">Other State</option>
           </select>
         </div>
-        <div><label>Sender GSTIN</label><input id="sender_gstin"></div>
+        <div><label>Sender GSTIN</label><input id="sender_gstin" value="27ABBFM0273D1ZO"></div>
       </div>
     </div>
 
@@ -295,10 +295,10 @@ function editChallan(challanNo) {
   document.getElementById('challan_no').value = record.challan_no || '';
   document.getElementById('date').value = record.date || '';
   document.getElementById('reason').value = record.reason || 'Supply on Approval';
-  document.getElementById('sender_name').value = record.sender_name || '';
-  document.getElementById('sender_address').value = record.sender_address || '';
+  document.getElementById('sender_name').value = record.sender_name || 'Millionaire Gold nx';
+  document.getElementById('sender_address').value = record.sender_address || '89/91, Laxmidas Gopaldas bldg, 1st Floor, Vithalwadi, Near Glitz Mall, Kalbadevi, Mumbai-400 002';
   document.getElementById('sender_state').value = record.sender_state || 'Maharashtra';
-  document.getElementById('sender_gstin').value = record.sender_gstin || '';
+  document.getElementById('sender_gstin').value = record.sender_gstin || '27ABBFM0273D1ZO';
   document.getElementById('receiver_name').value = record.receiver_name || '';
   document.getElementById('receiver_address').value = record.receiver_address || '';
   document.getElementById('receiver_state').value = record.receiver_state || 'Maharashtra';
