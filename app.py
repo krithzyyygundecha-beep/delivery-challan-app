@@ -26,7 +26,7 @@ def save_r(data):
     with open(REC_FILE, "w", encoding="utf-8") as f: json.dump(data, f, indent=2)
 
 def make_pdf(data, path):
-    # Top margin set to exactly 5.5 cm for pre-printed letterhead
+    # 5.5 cm top margin for pre-printed letterhead
     doc = SimpleDocTemplate(
         path, 
         pagesize=A4, 
@@ -62,11 +62,12 @@ def make_pdf(data, path):
     ]))
     elems.extend([t_h, Spacer(1, 8)])
     
+    # Headers using Rs. instead of Unicode rupee sign to avoid black box
     if is_interstate:
-        headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (₹)", "Taxable (₹)", "IGST (₹)", "Total (₹)"]
+        headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "IGST (Rs.)", "Total (Rs.)"]
         col_w = [22, 120, 55, 30, 48, 60, 70, 65, 65]
     else:
-        headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (₹)", "Taxable (₹)", "CGST (₹)", "SGST (₹)", "Total (₹)"]
+        headers = ["Sr.", "Description", "HSN", "Qty", "Net Wt", "Rate (Rs.)", "Taxable (Rs.)", "CGST (Rs.)", "SGST (Rs.)", "Total (Rs.)"]
         col_w = [20, 110, 50, 28, 44, 55, 63, 55, 55, 60]
 
     rows = [headers]
@@ -76,7 +77,8 @@ def make_pdf(data, path):
     tot_igst = 0
     tot_grand = 0
 
-    for i, itm in enumerate(data.get("items", []), 1):
+    items = data.get("items", [])
+    for i, itm in enumerate(items, 1):
         taxable = float(itm.get("value", 0) or 0)
         tot_taxable += taxable
         
@@ -103,32 +105,42 @@ def make_pdf(data, path):
                 f"{cgst:.2f}", f"{sgst:.2f}", f"{item_tot:.2f}"
             ])
 
+    # Extend table with empty blank rows so it nicely fills the page
+    min_rows = 8
+    empty_cols = 9 if is_interstate else 10
+    while len(rows) - 1 < min_rows:
+        rows.append([""] * empty_cols)
+
+    # Total row
     if is_interstate:
         rows.append(["", "Total", "", "", "", "", f"{tot_taxable:.2f}", f"{tot_igst:.2f}", f"{tot_grand:.2f}"])
     else:
         rows.append(["", "Total", "", "", "", "", f"{tot_taxable:.2f}", f"{tot_cgst:.2f}", f"{tot_sgst:.2f}", f"{tot_grand:.2f}"])
 
-    t_i = Table(rows, colWidths=col_w)
+    row_heights = [20] + [22] * (len(rows) - 2) + [22]
+
+    t_i = Table(rows, colWidths=col_w, rowHeights=row_heights)
     t_i.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 1, colors.black),
         ('GRID', (0,0), (-1,-2), 0.5, colors.grey),
         ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('ALIGN', (1,1), (1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 7.5),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
         ('LINEABOVE', (0,-1), (-1,-1), 1, colors.black),
-        ('PADDING', (0,0), (-1,-1), 2.5)
+        ('PADDING', (0,0), (-1,-1), 3)
     ]))
-    elems.extend([t_i, Spacer(1, 12)])
+    elems.extend([t_i, Spacer(1, 10)])
     
     elems.append(Paragraph("<font size=6.5>Terms: Goods dispatched on challan basis. Not a tax invoice. Subject to Home Jurisdiction.</font>", normal))
-    elems.append(Spacer(1, 25))
+    elems.append(Spacer(1, 30))
     
     sig = [[
         Paragraph("Receiver's Signature & Stamp", normal),
-        Paragraph(f"For <b>{data.get('sender_name','')}</b><br/><br/>Authorised Signatory", ParagraphStyle("R", parent=normal, alignment=2))
+        Paragraph(f"For <b>{data.get('sender_name','')}</b><br/><br/><br/>Authorised Signatory", ParagraphStyle("R", parent=normal, alignment=2))
     ]]
     elems.append(Table(sig, colWidths=[270, 270]))
     doc.build(elems)
