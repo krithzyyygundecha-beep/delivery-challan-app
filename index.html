@@ -1,25 +1,448 @@
+﻿<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>GST Delivery Challan</title><style>
+body{font-family:sans-serif;background:#f8fafc;padding:15px;color:#1e293b}
+.box{max-width:1150px;margin:auto;background:#fff;padding:25px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:12px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:12px}
+label{font-size:12px;font-weight:bold;color:#475569;display:block;margin-bottom:3px}
+input,select,textarea{width:100%;padding:7px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box;font-size:13px}
+table{width:100%;border-collapse:collapse;margin:15px 0}
+th,td{border:1px solid #e2e8f0;padding:5px;font-size:12px;text-align:center}
+th{background:#f1f5f9}
+.btn{background:#0284c7;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px}
+.btn-sec{background:#64748b}
+.btn-edit{background:#0284c7;padding:4px 8px;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px}
+.btn-del-record{background:#ef4444;padding:4px 8px;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;margin-left:5px}
+.btn-del{background:#ef4444;padding:3px 7px;color:#fff;border:none;border-radius:3px;cursor:pointer}
+.summary-box{float:right;width:300px;margin-top:10px;margin-bottom:20px;background:#f8fafc;padding:10px;border:1px solid #e2e8f0;border-radius:4px;}
+.summary-box div{display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px;}
+
+@media print {
+  @page {
+    margin-top: 55mm;
+    margin-left: 10mm;
+    margin-right: 10mm;
+    margin-bottom: 10mm;
+  }
+  body { background: #fff; padding: 0; }
+  .box { box-shadow: none; padding: 0; }
+  .btn, .btn-sec, button, .summary-box, hr, h3, #ht, select { display: none !important; }
+}
+</style></head>
+<body><div class="box">
+<h2>GST Delivery Challan Generator</h2>
+<form id="f">
+  <div class="grid-3">
+    <div><label>Challan No</label><input type="text" id="challan_no" placeholder="Auto if blank"></div>
+    <div><label>Date</label><input type="date" id="date"></div>
+    <div>
+      <label>Reason for Transportation</label>
+      <select id="reason">
+        <option>Supply on Approval</option>
+        <option>Job Work</option>
+        <option>Exhibition or Demonstration</option>
+        <option>Stock Transfer</option>
+        <option>Others</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <label>Sender / Consignor Name</label><input id="sender_name" value="Millionaire Gold nx" required>
+      <label style="margin-top:6px;">Sender Address</label><textarea id="sender_address" rows="2">89/91, Laxmidas Gopaldas bldg, 1st Floor, Vithalwadi, Near Glitz Mall, Kalbadevi, Mumbai-400 002</textarea>
+      <div class="grid-2" style="margin-top:6px;margin-bottom:0;">
+        <div>
+          <label>Sender State</label>
+          <select id="sender_state" onchange="calculateAll()">
+            <option value="Maharashtra" selected>Maharashtra (27)</option>
+            <option value="Gujarat">Gujarat (24)</option>
+            <option value="Rajasthan">Rajasthan (08)</option>
+            <option value="Delhi">Delhi (07)</option>
+            <option value="Karnataka">Karnataka (29)</option>
+            <option value="West Bengal">West Bengal (19)</option>
+            <option value="Tamil Nadu">Tamil Nadu (33)</option>
+            <option value="Other State">Other State</option>
+          </select>
+        </div>
+        <div><label>Sender GSTIN</label><input id="sender_gstin" value="27ABBFM0273D1ZO"></div>
+      </div>
+    </div>
+
+    <div>
+      <label>Recipient / Consignee Name</label><input id="receiver_name" required>
+      <label style="margin-top:6px;">Receiver Address</label><textarea id="receiver_address" rows="2"></textarea>
+      <div class="grid-2" style="margin-top:6px;margin-bottom:0;">
+        <div>
+          <label>Receiver State (Place of Supply)</label>
+          <select id="receiver_state" onchange="calculateAll()">
+            <option value="Maharashtra" selected>Maharashtra (27)</option>
+            <option value="Gujarat">Gujarat (24)</option>
+            <option value="Rajasthan">Rajasthan (08)</option>
+            <option value="Delhi">Delhi (07)</option>
+            <option value="Karnataka">Karnataka (29)</option>
+            <option value="West Bengal">West Bengal (19)</option>
+            <option value="Tamil Nadu">Tamil Nadu (33)</option>
+            <option value="Other State">Other State</option>
+          </select>
+        </div>
+        <div><label>Vehicle / Docket No</label><input id="vehicle_no"></div>
+      </div>
+      <label style="margin-top:6px;">Receiver GSTIN / PAN</label><input id="receiver_gstin">
+    </div>
+  </div>
+
+  <table id="tb">
+    <thead>
+      <tr>
+        <th width="150">Description</th>
+        <th width="130">Narration</th>
+        <th width="75">HSN</th>
+        <th width="45">Qty</th>
+        <th width="65">Gross Wt</th>
+        <th width="65">Net Wt</th>
+        <th width="75">Rate (₹)</th>
+        <th width="85">Value (₹)</th>
+        <th width="60" class="th-cgst">CGST</th>
+        <th width="60" class="th-sgst">SGST</th>
+        <th width="60" class="th-igst" style="display:none;">IGST</th>
+        <th width="85">Total (₹)</th>
+        <th width="25"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <select class="d" onchange="onDescChange(this)" required>
+            <option value="">Select Item</option>
+            <option value="Gold Jewellery">Gold Jewellery (3%)</option>
+            <option value="Gold Bullion">Gold Bullion (3%)</option>
+            <option value="Hallmarking charge">Hallmarking charge (18%)</option>
+          </select>
+        </td>
+        <td><input type="text" class="nar" placeholder="Details/Purity/Remarks"></td>
+        <td><input class="h" readonly style="background:#f1f5f9;"></td>
+        <td><input type="number" class="q" value="1" oninput="calculateRow(this.closest('tr'))"></td>
+        <td><input type="number" step="0.001" class="gw"></td>
+        <td><input type="number" step="0.001" class="nw" oninput="calculateRow(this.closest('tr'))"></td>
+        <td><input type="number" step="0.01" class="r" oninput="calculateRow(this.closest('tr'))"></td>
+        <td><input type="number" step="0.01" class="v" readonly style="background:#f1f5f9;"></td>
+        <td class="td-cgst"><input type="number" step="0.01" class="cgst" readonly style="background:#f1f5f9;"></td>
+        <td class="td-sgst"><input type="number" step="0.01" class="sgst" readonly style="background:#f1f5f9;"></td>
+        <td class="td-igst" style="display:none;"><input type="number" step="0.01" class="igst" readonly style="background:#f1f5f9;"></td>
+        <td><input type="number" step="0.01" class="tot" readonly style="background:#f1f5f9;font-weight:bold;"></td>
+        <td><button type="button" class="btn-del" onclick="this.closest('tr').remove();calculateAll();">x</button></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <button type="button" class="btn btn-sec" onclick="addRow()">+ Add Row</button>
+
+  <div class="summary-box">
+    <div><span>Taxable Total:</span><span id="sum_taxable">₹ 0.00</span></div>
+    <div id="box_cgst"><span>Total CGST:</span><span id="sum_cgst">₹ 0.00</span></div>
+    <div id="box_sgst"><span>Total SGST:</span><span id="sum_sgst">₹ 0.00</span></div>
+    <div id="box_igst" style="display:none;"><span>Total IGST:</span><span id="sum_igst">₹ 0.00</span></div>
+    <div style="font-weight:bold;border-top:1px solid #cbd5e1;padding-top:4px;"><span>Grand Total:</span><span id="sum_grand">₹ 0.00</span></div>
+  </div>
+
+  <div style="clear:both;"></div>
+
+  <div style="margin-top:15px;">
+    <button type="submit" id="btnSubmit" class="btn">Save & Generate PDF</button>
+    <button type="button" class="btn btn-sec" onclick="window.print()">Direct Print (5.5cm Letterhead)</button>
+  </div>
+</form>
+
+<hr style="margin:25px 0">
+<h3>Saved Challans</h3>
+<table id="ht">
+  <thead><tr><th>Challan No</th><th>Date</th><th>Receiver</th><th>Grand Total</th><th>Actions</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-  // 1. Update Vehicle Number
-  const vehicleInput = document.querySelector('input[name*="vehicle"], input[id*="vehicle"]');
-  if (vehicleInput) {
-    vehicleInput.value = "MH01DP0666";
+document.getElementById('date').valueAsDate = new Date();
+let cachedRecords = [];
+
+const meta = {
+  "Gold Jewellery": { hsn: "71131910", tax: 3, byWeight: true },
+  "Gold Bullion": { hsn: "71081200", tax: 3, byWeight: true },
+  "Hallmarking charge": { hsn: "998346", tax: 18, byWeight: false }
+};
+
+function isInterstate() {
+  return document.getElementById("sender_state").value !== document.getElementById("receiver_state").value;
+}
+
+function onDescChange(sel) {
+  const row = sel.closest('tr');
+  const d = meta[sel.value];
+  row.querySelector('.h').value = d ? d.hsn : "";
+  calculateRow(row);
+}
+
+function calculateRow(row) {
+  const desc = row.querySelector('.d').value;
+  const cfg = meta[desc] || { tax: 0, byWeight: true };
+  const qty = parseFloat(row.querySelector('.q').value) || 0;
+  const nw = parseFloat(row.querySelector('.nw').value) || 0;
+  const rate = parseFloat(row.querySelector('.r').value) || 0;
+
+  let val = cfg.byWeight ? (nw * rate) : (qty * rate);
+  row.querySelector('.v').value = val.toFixed(2);
+
+  const interstate = isInterstate();
+  const taxPct = cfg.tax;
+
+  if (interstate) {
+    const igst = (val * taxPct) / 100;
+    row.querySelector('.igst').value = igst.toFixed(2);
+    row.querySelector('.cgst').value = "0.00";
+    row.querySelector('.sgst').value = "0.00";
+    row.querySelector('.tot').value = (val + igst).toFixed(2);
+  } else {
+    const half = taxPct / 2;
+    const cgst = (val * half) / 100;
+    const sgst = (val * half) / 100;
+    row.querySelector('.cgst').value = cgst.toFixed(2);
+    row.querySelector('.sgst').value = sgst.toFixed(2);
+    row.querySelector('.igst').value = "0.00";
+    row.querySelector('.tot').value = (val + cgst + sgst).toFixed(2);
+  }
+  calculateAllTotals();
+}
+
+function calculateAll() {
+  const interstate = isInterstate();
+  document.querySelectorAll('.th-cgst, .td-cgst, .th-sgst, .td-sgst').forEach(el => el.style.display = interstate ? 'none' : '');
+  document.querySelectorAll('.th-igst, .td-igst').forEach(el => el.style.display = interstate ? '' : 'none');
+  document.getElementById('box_cgst').style.display = interstate ? 'none' : 'flex';
+  document.getElementById('box_sgst').style.display = interstate ? 'none' : 'flex';
+  document.getElementById('box_igst').style.display = interstate ? 'flex' : 'none';
+
+  document.querySelectorAll('#tb tbody tr').forEach(r => calculateRow(r));
+}
+
+function calculateAllTotals() {
+  let totV = 0, totC = 0, totS = 0, totI = 0, totG = 0;
+  document.querySelectorAll('#tb tbody tr').forEach(r => {
+    totV += parseFloat(r.querySelector('.v').value) || 0;
+    totC += parseFloat(r.querySelector('.cgst').value) || 0;
+    totS += parseFloat(r.querySelector('.sgst').value) || 0;
+    totI += parseFloat(r.querySelector('.igst').value) || 0;
+    totG += parseFloat(r.querySelector('.tot').value) || 0;
+  });
+  document.getElementById('sum_taxable').innerText = "₹ " + totV.toFixed(2);
+  document.getElementById('sum_cgst').innerText = "₹ " + totC.toFixed(2);
+  document.getElementById('sum_sgst').innerText = "₹ " + totS.toFixed(2);
+  document.getElementById('sum_igst').innerText = "₹ " + totI.toFixed(2);
+  document.getElementById('sum_grand').innerText = "₹ " + totG.toFixed(2);
+}
+
+function addRow() {
+  const tbody = document.querySelector('#tb tbody');
+  const interstate = isInterstate();
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>
+      <select class="d" onchange="onDescChange(this)" required>
+        <option value="">Select Item</option>
+        <option value="Gold Jewellery">Gold Jewellery (3%)</option>
+        <option value="Gold Bullion">Gold Bullion (3%)</option>
+        <option value="Hallmarking charge">Hallmarking charge (18%)</option>
+      </select>
+    </td>
+    <td><input type="text" class="nar" placeholder="Details/Purity/Remarks"></td>
+    <td><input class="h" readonly style="background:#f1f5f9;"></td>
+    <td><input type="number" class="q" value="1" oninput="calculateRow(this.closest('tr'))"></td>
+    <td><input type="number" step="0.001" class="gw"></td>
+    <td><input type="number" step="0.001" class="nw" oninput="calculateRow(this.closest('tr'))"></td>
+    <td><input type="number" step="0.01" class="r" oninput="calculateRow(this.closest('tr'))"></td>
+    <td><input type="number" step="0.01" class="v" readonly style="background:#f1f5f9;"></td>
+    <td class="td-cgst" style="${interstate ? 'display:none;' : ''}"><input type="number" step="0.01" class="cgst" readonly style="background:#f1f5f9;"></td>
+    <td class="td-sgst" style="${interstate ? 'display:none;' : ''}"><input type="number" step="0.01" class="sgst" readonly style="background:#f1f5f9;"></td>
+    <td class="td-igst" style="${interstate ? '' : 'display:none;'}"><input type="number" step="0.01" class="igst" readonly style="background:#f1f5f9;"></td>
+    <td><input type="number" step="0.01" class="tot" readonly style="background:#f1f5f9;font-weight:bold;"></td>
+    <td><button type="button" class="btn-del" onclick="this.closest('tr').remove();calculateAll();">x</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function triggerDownload(pdfUrl, fileName) {
+  const link = document.createElement('a');
+  link.href = pdfUrl;
+  link.download = fileName || 'Delivery_Challan.pdf';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Data Preservation: Merges local backup with server response
+async function loadH() {
+  let serverRecords = [];
+  try {
+    const r = await fetch('/api/challans');
+    if (r.ok) serverRecords = await r.json();
+  } catch(e) {}
+
+  let localBackup = JSON.parse(localStorage.getItem('saved_challans_backup') || '[]');
+  
+  // Merge both by Challan No without dropping records
+  const map = new Map();
+  localBackup.forEach(item => map.set(item.challan_no, item));
+  serverRecords.forEach(item => map.set(item.challan_no, item));
+  cachedRecords = Array.from(map.values());
+  
+  localStorage.setItem('saved_challans_backup', JSON.stringify(cachedRecords));
+
+  document.querySelector('#ht tbody').innerHTML = cachedRecords.map((x) => {
+    const gTot = (x.items || []).reduce((acc, itm) => acc + (parseFloat(itm.total) || 0), 0);
+    const safeChallanNo = x.challan_no.replace(/\//g, '_');
+    return `
+    <tr>
+      <td><b>${x.challan_no}</b></td>
+      <td>${x.date}</td>
+      <td>${x.receiver_name}</td>
+      <td>₹ ${gTot.toFixed(2)}</td>
+      <td>
+        <a href="${x.pdf_path}" target="_blank" style="margin-right:6px;">View</a>
+        <button type="button" class="btn-edit" onclick="triggerDownload('${x.pdf_path}', '${safeChallanNo}.pdf')">Download</button>
+        <button type="button" class="btn-edit" onclick="editChallan('${x.challan_no}')">Edit</button>
+        <button type="button" class="btn-del-record" onclick="deleteChallan('${x.challan_no}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function editChallan(challanNo) {
+  const record = cachedRecords.find(c => c.challan_no === challanNo);
+  if (!record) return;
+
+  document.getElementById('challan_no').value = record.challan_no || '';
+  document.getElementById('date').value = record.date || '';
+  document.getElementById('reason').value = record.reason || 'Supply on Approval';
+  document.getElementById('sender_name').value = record.sender_name || 'Millionaire Gold nx';
+  document.getElementById('sender_address').value = record.sender_address || '89/91, Laxmidas Gopaldas bldg, 1st Floor, Vithalwadi, Near Glitz Mall, Kalbadevi, Mumbai-400 002';
+  document.getElementById('sender_state').value = record.sender_state || 'Maharashtra';
+  document.getElementById('sender_gstin').value = record.sender_gstin || '27ABBFM0273D1ZO';
+  document.getElementById('receiver_name').value = record.receiver_name || '';
+  document.getElementById('receiver_address').value = record.receiver_address || '';
+  document.getElementById('receiver_state').value = record.receiver_state || 'Maharashtra';
+  document.getElementById('receiver_gstin').value = record.receiver_gstin || '';
+  document.getElementById('vehicle_no').value = record.vehicle_no || '';
+
+  const tbody = document.querySelector('#tb tbody');
+  tbody.innerHTML = '';
+
+  (record.items || []).forEach(itm => {
+    addRow();
+    const lastRow = tbody.lastElementChild;
+    lastRow.querySelector('.d').value = itm.description || '';
+    lastRow.querySelector('.nar').value = itm.narration || '';
+    lastRow.querySelector('.h').value = itm.hsn || '';
+    lastRow.querySelector('.q').value = itm.qty || 1;
+    lastRow.querySelector('.gw').value = itm.gross_wt || '';
+    lastRow.querySelector('.nw').value = itm.net_wt || '';
+    lastRow.querySelector('.r').value = itm.rate || '';
+  });
+
+  calculateAll();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteChallan(challanNo) {
+  const pwd = prompt("Enter deletion password:");
+  if (!pwd) return;
+
+  if (pwd !== "090676") {
+    alert("Incorrect password! Deletion cancelled.");
+    return;
   }
 
-  // 2. Update Staff Dropdown Options
-  const staffList = [
-    "Vishwajeet Kulye",
-    "Rajesh Malap",
-    "Jainamkumar Jain",
-    "Manish Jain",
-    "Krith Jain",
-    "Dipesh Parmar"
-  ];
+  try {
+    await fetch(`/api/challans/${encodeURIComponent(challanNo)}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Password': pwd }
+    });
+  } catch(e) {}
 
-  const staffSelect = document.querySelector('select[name*="staff"], select[id*="staff"]');
-  if (staffSelect) {
-    staffSelect.innerHTML = '<option value="" disabled selected>Select Staff</option>' +
-      staffList.map(name => `<option value="${name}">${name}</option>`).join('');
+  // Remove from persistent local storage
+  cachedRecords = cachedRecords.filter(c => c.challan_no !== challanNo);
+  localStorage.setItem('saved_challans_backup', JSON.stringify(cachedRecords));
+
+  alert(`Challan ${challanNo} deleted successfully.`);
+  loadH();
+}
+
+document.getElementById('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btnSubmit');
+  btn.innerText = "Generating...";
+  btn.disabled = true;
+
+  try {
+    const items = [...document.querySelectorAll('#tb tbody tr')].map(r => ({
+      description: r.querySelector('.d').value,
+      narration: r.querySelector('.nar').value || "",
+      hsn: r.querySelector('.h').value,
+      qty: r.querySelector('.q').value || "1",
+      gross_wt: r.querySelector('.gw').value || "0",
+      net_wt: r.querySelector('.nw').value || "0",
+      rate: r.querySelector('.r').value || "0",
+      value: r.querySelector('.v').value || "0",
+      cgst: r.querySelector('.cgst').value || "0",
+      sgst: r.querySelector('.sgst').value || "0",
+      igst: r.querySelector('.igst').value || "0",
+      total: r.querySelector('.tot').value || "0"
+    }));
+
+    const payload = {
+      challan_no: document.getElementById('challan_no').value.trim(),
+      date: document.getElementById('date').value,
+      reason: document.getElementById('reason').value,
+      sender_name: document.getElementById('sender_name').value,
+      sender_address: document.getElementById('sender_address').value,
+      sender_state: document.getElementById('sender_state').value,
+      sender_gstin: document.getElementById('sender_gstin').value,
+      receiver_name: document.getElementById('receiver_name').value,
+      receiver_address: document.getElementById('receiver_address').value,
+      receiver_state: document.getElementById('receiver_state').value,
+      receiver_gstin: document.getElementById('receiver_gstin').value,
+      vehicle_no: document.getElementById('vehicle_no').value,
+      items
+    };
+
+    const res = await fetch('/api/challans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const resData = await res.json();
+    if (!res.ok) throw new Error(resData.message || "Server Error");
+
+    // Immediately save locally so it's immune to cloud resets
+    const existingIdx = cachedRecords.findIndex(c => c.challan_no === resData.data.challan_no);
+    if (existingIdx >= 0) cachedRecords[existingIdx] = resData.data;
+    else cachedRecords.push(resData.data);
+    localStorage.setItem('saved_challans_backup', JSON.stringify(cachedRecords));
+
+    const pdfFileName = `${resData.data.challan_no.replace(/\//g, '_')}.pdf`;
+    triggerDownload(resData.data.pdf_path, pdfFileName);
+    
+    await loadH();
+    alert("Challan & PDF Saved successfully!");
+  } catch (err) {
+    alert("Error saving challan: " + err.message);
+  } finally {
+    btn.innerText = "Save & Generate PDF";
+    btn.disabled = false;
   }
-});
+};
+
+calculateAll();
+loadH();
 </script>
+</body></html>
